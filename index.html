@@ -2,15 +2,20 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#0b1118" />
 <title>方块世界 · 网页版 Minecraft</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #0b1118;
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-    color: #fff; -webkit-user-select: none; user-select: none; }
+    color: #fff; -webkit-user-select: none; user-select: none;
+    touch-action: none; overscroll-behavior: none; -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none; }
   #app { position: fixed; inset: 0; }
-  canvas { display: block; }
+  canvas { display: block; touch-action: none; }
 
   /* ---------- HUD ---------- */
   #hud { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .25s; }
@@ -21,7 +26,7 @@
   #crosshair::before, #crosshair::after { content: ""; position: absolute;
     background: rgba(255,255,255,.9); box-shadow: 0 0 3px rgba(0,0,0,.9); }
   #crosshair::before { left: 9px; top: 0; width: 2px; height: 20px; }
-  #crosshair::after { top: 9px; left: 0; width: 2px; height: 20px; }
+  #crosshair::after { top: 9px; left: 0; width: 20px; height: 2px; }
 
   #stats { position: absolute; left: 14px; top: 12px; font: 500 12px/1.6 ui-monospace, Menlo, Consolas, monospace;
     color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.85); letter-spacing: .3px; }
@@ -34,10 +39,10 @@
   #selName.on { opacity: 1; }
 
   #hotbar { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
-    display: flex; gap: 6px; padding: 6px; border-radius: 10px;
+    display: flex; gap: 6px; padding: 6px; border-radius: 10px; pointer-events: auto;
     background: rgba(10,14,19,.55); border: 1px solid rgba(255,255,255,.16);
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-  .slot { position: relative; width: 46px; height: 46px; border-radius: 6px;
+  .slot { position: relative; width: 46px; height: 46px; border-radius: 6px; cursor: pointer;
     border: 2px solid rgba(255,255,255,.14); background-size: 400% 400%;
     background-repeat: no-repeat; image-rendering: pixelated; opacity: .8;
     transition: transform .1s, border-color .1s, opacity .1s; }
@@ -67,12 +72,14 @@
   #chatLog div.fade { opacity: 0; }
 
   #chatBar { position: absolute; left: 14px; right: 14px; bottom: 42px; display: none;
-    padding: 7px 12px; border-radius: 8px; background: rgba(8,12,18,.74);
-    border: 1px solid rgba(118,214,122,.5); font-size: 13px; color: #fff; }
+    padding: 6px 12px 7px; border-radius: 8px; background: rgba(8,12,18,.74);
+    border: 1px solid rgba(118,214,122,.5); font-size: 13px; color: #fff; pointer-events: auto; }
   #chatBar.on { display: block; }
-  #chatBar::before { content: "› "; color: #9adf7e; }
-  #chatBar span::after { content: "▏"; color: #9adf7e; animation: blink 1s steps(2) infinite; }
-  @keyframes blink { 50% { opacity: 0; } }
+  #chatBar::before { content: "› "; color: #9adf7e; float: left; line-height: 22px; }
+  #chatInput { width: calc(100% - 16px); border: 0; outline: none; background: transparent;
+    font-family: inherit; font-size: 13px; line-height: 22px; color: #fff; padding: 0;
+    caret-color: #9adf7e; }
+  #chatInput::placeholder { color: rgba(255,255,255,.35); }
 
   #nick { display: block; width: 210px; margin: 16px auto 0; padding: 9px 12px; text-align: center;
     font-size: 13px; color: #eaf3fb; letter-spacing: 1px; border-radius: 8px; font-family: inherit;
@@ -113,6 +120,94 @@
     font: 600 10.5px/1.5 ui-monospace, monospace; color: #dfe9f2; text-align: center;
     background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.14);
     border-radius: 4px; box-shadow: 0 1px 0 rgba(0,0,0,.35); }
+  .keys.tkeys { display: none; }
+  body.touch .keys:not(.tkeys) { display: none; }
+  body.touch .keys.tkeys { display: grid; }
+
+  /* ================= 触屏（移动端） ================= */
+  #touch { display: none; position: absolute; inset: 0; pointer-events: none; }
+  body.touch #touch { display: block; }
+  body.touch #hint { display: none; }
+  body.touch #stats { font-size: 11px; left: calc(12px + env(safe-area-inset-left)); }
+  body.touch #players { right: calc(12px + env(safe-area-inset-right)); gap: 4px; }
+  body.touch #players .pl { font-size: 11px; padding: 2px 8px 2px 7px; }
+
+  /* 摇杆 */
+  #joy { position: absolute; left: calc(14px + env(safe-area-inset-left));
+    bottom: calc(70px + env(safe-area-inset-bottom));
+    width: 118px; height: 118px; border-radius: 50%; pointer-events: auto; touch-action: none;
+    background: radial-gradient(circle at 50% 42%, rgba(255,255,255,.10), rgba(8,12,18,.36));
+    border: 1px solid rgba(255,255,255,.22); box-shadow: 0 8px 22px rgba(0,0,0,.32); }
+  #joy i { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px;
+    margin: -25px 0 0 -25px; border-radius: 50%;
+    background: rgba(236,245,255,.5); border: 1px solid rgba(255,255,255,.85);
+    box-shadow: 0 3px 10px rgba(0,0,0,.4); will-change: transform; }
+
+  /* 动作按钮 */
+  #acts { position: absolute; right: calc(14px + env(safe-area-inset-right));
+    bottom: calc(66px + env(safe-area-inset-bottom));
+    display: grid; grid-template-areas: "fly jump" "place mine";
+    gap: 9px; justify-items: center; align-items: center; pointer-events: auto; }
+  .tb { -webkit-tap-highlight-color: transparent; touch-action: none; pointer-events: auto;
+    display: flex; align-items: center; justify-content: center;
+    width: 58px; height: 58px; border-radius: 50%; border: 1px solid rgba(255,255,255,.26);
+    background: rgba(12,18,26,.48); color: #eaf4ff; font-family: inherit;
+    font-size: 15px; font-weight: 600; letter-spacing: 1px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.3);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    transition: transform .08s ease, background .12s, border-color .12s; }
+  .tb.press { transform: scale(.91); background: rgba(118,214,122,.45); border-color: rgba(255,255,255,.62); }
+  #btnFly { grid-area: fly; width: 46px; height: 46px; font-size: 12px; }
+  #btnFly.on { background: rgba(118,214,122,.5); border-color: #b6e86a; color: #f4ffe9; }
+  #btnJump { grid-area: jump; }
+  #btnPlace { grid-area: place; }
+  #btnMine { grid-area: mine; width: 74px; height: 74px; font-size: 17px;
+    background: rgba(103,185,60,.34); border-color: rgba(176,238,112,.55); }
+  #btnDown { position: absolute; right: calc(24px + env(safe-area-inset-right));
+    bottom: calc(208px + env(safe-area-inset-bottom));
+    width: 52px; height: 52px; font-size: 13px; display: none; }
+  body.flying #btnDown { display: flex; }
+
+  /* 顶部小按钮 */
+  #topBtns { position: absolute; left: calc(12px + env(safe-area-inset-left));
+    top: 34px; display: flex; gap: 6px; pointer-events: auto; }
+  #topBtns button { font-family: inherit; font-size: 11px; letter-spacing: 1px;
+    padding: 5px 11px; border-radius: 999px; color: #e9f2fb; cursor: pointer;
+    background: rgba(10,14,19,.5); border: 1px solid rgba(255,255,255,.18);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  #topBtns button:active { background: rgba(118,214,122,.42); }
+
+  body.touch #hotbar { bottom: calc(6px + env(safe-area-inset-bottom)); gap: 3px; padding: 4px;
+    max-width: calc(100vw - 8px); overflow-x: auto; overflow-y: hidden; }
+  body.touch .slot { width: 38px; height: 38px; border-width: 2px; }
+  body.touch .slot b { font-size: 9px; right: 2px; }
+  body.touch .slot.on { transform: translateY(-3px); }
+  body.touch #selName { bottom: 62px; font-size: 12px; }
+  body.touch #chatLog { bottom: 200px; width: min(400px, 62vw); }
+  body.touch #chatLog div { font-size: 12px; }
+  body.touch #chatBar { bottom: 200px; left: calc(12px + env(safe-area-inset-left));
+    right: calc(12px + env(safe-area-inset-right)); font-size: 16px; }
+  body.touch #chatInput { font-size: 16px; line-height: 24px; }
+  body.touch .panel { width: min(460px, 92vw); padding: 24px 20px 20px; }
+  body.touch .panel h1 { font-size: 25px; letter-spacing: 3px; }
+  body.touch #nick { width: 100%; max-width: 240px; font-size: 16px; }
+  body.touch #startBtn { padding: 13px 46px; font-size: 16px; }
+
+  /* 矮屏（手机横屏）压缩尺寸 */
+  @media (max-height: 460px) {
+    #joy { width: 100px; height: 100px; bottom: calc(58px + env(safe-area-inset-bottom)); }
+    #joy i { width: 42px; height: 42px; margin: -21px 0 0 -21px; }
+    #acts { bottom: calc(54px + env(safe-area-inset-bottom)); gap: 7px; }
+    .tb { width: 50px; height: 50px; font-size: 13px; }
+    #btnMine { width: 64px; height: 64px; font-size: 15px; }
+    #btnFly { width: 40px; height: 40px; font-size: 11px; }
+    #btnDown { width: 44px; height: 44px; bottom: calc(176px + env(safe-area-inset-bottom)); }
+    body.touch #chatLog { bottom: 170px; }
+    body.touch #chatBar { bottom: 170px; }
+    body.touch .panel { padding: 16px 18px 14px; }
+    body.touch .panel h1 { font-size: 20px; margin-top: 4px; }
+    body.touch .keys { margin-top: 12px; }
+  }
 </style>
 </head>
 <body>
@@ -124,9 +219,24 @@
   <div id="selName"></div>
   <div id="players"></div>
   <div id="chatLog"></div>
-  <div id="chatBar"><span id="chatText"></span></div>
+  <div id="chatBar"><input id="chatInput" maxlength="120" placeholder="说点什么…" autocomplete="off" autocorrect="off" spellcheck="false" /></div>
   <div id="hotbar"></div>
   <div id="hint">左键 挖掘 · 右键 放置 · 滚轮/1-8 切换方块 · F 飞行 · Enter 聊天 · ESC 暂停</div>
+
+  <div id="touch">
+    <div id="topBtns">
+      <button id="btnChat" type="button">聊天</button>
+      <button id="btnPause" type="button">暂停</button>
+    </div>
+    <div id="joy"><i></i></div>
+    <div id="acts">
+      <button class="tb" id="btnFly" type="button">飞</button>
+      <button class="tb" id="btnJump" type="button">跳</button>
+      <button class="tb" id="btnPlace" type="button">放</button>
+      <button class="tb" id="btnMine" type="button">挖</button>
+    </div>
+    <button class="tb" id="btnDown" type="button">降</button>
+  </div>
 </div>
 
 <div id="overlay">
@@ -145,6 +255,14 @@
       <div><kbd>左键</kbd> 挖掉方块</div>
       <div><kbd>右键</kbd> 放置方块</div>
     </div>
+    <div class="keys tkeys">
+      <div><kbd>左摇杆</kbd> 移动</div>
+      <div><kbd>滑动屏幕</kbd> 转视角</div>
+      <div><kbd>挖</kbd> 挖掉方块</div>
+      <div><kbd>放</kbd> 放置方块</div>
+      <div><kbd>跳</kbd> 跳跃</div>
+      <div><kbd>飞</kbd> 飞行模式</div>
+    </div>
   </div>
 </div>
 
@@ -154,6 +272,17 @@
   'use strict';
 
   var $ = function (s) { return document.querySelector(s); };
+
+  /* 设备判断：粗指针 + 支持触摸 → 触屏操作。?touch / ?notouch 可强制覆盖 */
+  var IS_TOUCH = (function () {
+    var q = location.search;
+    if (/[?&]touch\b/.test(q)) return true;
+    if (/[?&]notouch\b/.test(q)) return false;
+    var hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
+    var coarse = window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : false;
+    return hasTouch && coarse;
+  })();
+  if (IS_TOUCH) document.body.classList.add('touch');
 
   /* =========================================================
      0. 引擎加载（本地文件优先，失败回退 CDN）
@@ -419,9 +548,18 @@
     var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 800);
     camera.rotation.order = 'YXZ';
 
-    var renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    // 竖屏视野更窄，纵向 FOV 放开一点，避免左右只剩一条缝
+    function fitCamera() {
+      var a = window.innerWidth / window.innerHeight;
+      camera.aspect = a;
+      camera.fov = a < 1 ? 88 : 75;
+      camera.updateProjectionMatrix();
+    }
+
+    var renderer = new THREE.WebGLRenderer({ antialias: !IS_TOUCH, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1.75 : 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
+    if (IS_TOUCH) { renderer.domElement.style.touchAction = 'none'; fitCamera(); }
     $('#app').appendChild(renderer.domElement);
 
     // ---- 天空球 ----
@@ -543,7 +681,7 @@
     };
 
     var yaw = 0, pitch = 0;
-    var keys = {};
+    var keys = {}, touchSprint = false;
     var started = false, paused = true, locked = false;
 
     // ---- 选中方块的描边 ----
@@ -688,7 +826,7 @@
       ws.onopen = function () {
         net.connected = true;
         setConn('已联机');
-        net.send({ t: 'join', name: nick });
+        net.send({ t: 'join', name: nick, x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: yaw, pitch: pitch });
       };
       ws.onmessage = function (ev) {
         var m;
@@ -830,7 +968,9 @@
     }
 
     /* ---------------- 聊天 ---------------- */
-    var chatOpen = false, chatBuf = '';
+    var chatOpen = false;
+    var chatInput = $('#chatInput');
+    var chatBarEl = $('#chatBar');
 
     function pushChat(name, text) {
       if (!text) return;
@@ -843,19 +983,49 @@
       setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 19000);
     }
 
-    function updateChatBar() {
-      $('#chatBar').classList.toggle('on', chatOpen);
-      $('#chatText').textContent = chatBuf;
+    // 手机软键盘会遮住底部，把输入条顶到键盘上方
+    function fitChatBar() {
+      var base = IS_TOUCH ? (window.innerHeight <= 460 ? 170 : 200) : 42;
+      var off = 0;
+      var vv = window.visualViewport;
+      if (IS_TOUCH && vv) off = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      chatBarEl.style.bottom = (base + off) + 'px';
+      if (chatOpen && off > 0) chatBarEl.style.bottom = (off + 12) + 'px';
+    }
+
+    function openChat() {
+      if (chatOpen) return;
+      chatOpen = true;
+      chatInput.value = '';
+      chatBarEl.classList.add('on');
+      fitChatBar();
+      chatInput.focus();
+    }
+
+    function closeChat() {
+      chatOpen = false;
+      chatBarEl.classList.remove('on');
+      chatInput.blur();
     }
 
     function sendChat() {
-      var text = chatBuf.trim().slice(0, 120);
-      chatBuf = '';
-      chatOpen = false;
-      updateChatBar();
+      var text = chatInput.value.trim().slice(0, 120);
+      closeChat();
+      chatInput.value = '';
       if (!text) return;
       if (net.connected) net.send({ t: 'chat', text: text });
       pushChat(nick, text);
+    }
+
+    chatInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeChat(); }
+      e.stopPropagation();
+    });
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', fitChatBar);
+      window.visualViewport.addEventListener('scroll', fitChatBar);
     }
 
     loadNick();
@@ -968,13 +1138,15 @@
 
     var dragButton = -1, dragging = false, dragDist = 0;
 
-    function look(dx, dy) {
-      yaw -= dx * 0.0022;
-      pitch -= dy * 0.0022;
+    function look(dx, dy, k) {
+      k = k || 0.0022;
+      yaw -= dx * k;
+      pitch -= dy * k;
       pitch = clamp(pitch, -1.55, 1.55);
     }
 
     function requestLock() {
+      if (IS_TOUCH) return;
       var el = renderer.domElement;
       try { if (el.requestPointerLock) el.requestPointerLock(); } catch (e) {}
     }
@@ -985,6 +1157,19 @@
       else ov.classList.add('hide');
     }
 
+    function goFullscreen() {
+      if (!IS_TOUCH) return;
+      var el = document.documentElement;
+      try {
+        if (el.requestFullscreen) {
+          var p = el.requestFullscreen({ navigationUI: 'hide' });
+          if (p && p.catch) p.catch(function () {});
+        } else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      } catch (e) {}
+    }
+
+    var touchTipShown = false;
+
     function start() {
       if (!started) {
         started = true;
@@ -993,10 +1178,17 @@
         try { localStorage.setItem('mc_nick', nick); } catch (e) {}
         setConn(location.protocol === 'file:' ? '单机模式（未开服务端）' : '连接中…');
         connect();
+        if (IS_TOUCH && !touchTipShown) {
+          touchTipShown = true;
+          setTimeout(function () {
+            pushChat('', '左摇杆移动 · 滑动屏幕转视角 · 点「挖」「放」改方块');
+          }, 600);
+        }
       }
       paused = false;
       setOverlay(false);
       $('#hud').classList.add('on');
+      goFullscreen();
       requestLock();
     }
 
@@ -1004,7 +1196,8 @@
       if (!started) return;
       paused = true;
       for (var k in keys) keys[k] = false;
-      if (chatOpen) { chatOpen = false; chatBuf = ''; updateChatBar(); }
+      touchSprint = false;
+      if (chatOpen) closeChat();
       setOverlay(true);
     }
 
@@ -1019,11 +1212,13 @@
     }
 
     document.addEventListener('pointerlockchange', function () {
+      if (IS_TOUCH) return;
       locked = (document.pointerLockElement === renderer.domElement);
       if (!locked && started && !paused) pause();
     });
 
     document.addEventListener('mousemove', function (e) {
+      if (IS_TOUCH) return;
       if (!started || paused) return;
       if (locked) look(e.movementX || 0, e.movementY || 0);
       else if (dragging) {
@@ -1033,6 +1228,7 @@
     });
 
     renderer.domElement.addEventListener('mousedown', function (e) {
+      if (IS_TOUCH) return;
       if (!started || paused) return;
       if (locked) {
         if (e.button === 0) breakBlock();
@@ -1043,6 +1239,7 @@
     });
 
     document.addEventListener('mouseup', function (e) {
+      if (IS_TOUCH) return;
       if (!started || paused) return;
       if (!locked && dragging) {
         if (dragDist < 8) {
@@ -1064,20 +1261,12 @@
     document.addEventListener('keydown', function (e) {
       if (!started) return;
 
-      // 聊天输入优先，吞掉所有按键
-      if (chatOpen) {
-        if (e.key === 'Enter') { e.preventDefault(); sendChat(); return; }
-        if (e.key === 'Escape') { e.preventDefault(); chatOpen = false; chatBuf = ''; updateChatBar(); return; }
-        if (e.key === 'Backspace') { e.preventDefault(); chatBuf = chatBuf.slice(0, -1); updateChatBar(); return; }
-        if (e.key && e.key.length === 1 && chatBuf.length < 120) { e.preventDefault(); chatBuf += e.key; updateChatBar(); }
-        return;
-      }
+      // 聊天输入框自己处理按键（含 Enter / Esc）
+      if (chatOpen) return;
 
       if (e.key === 'Enter') {
         e.preventDefault();
-        chatOpen = true;
-        chatBuf = '';
-        updateChatBar();
+        openChat();
         return;
       }
 
@@ -1091,21 +1280,167 @@
         player.fly = !player.fly;
         player.vel.y = 0;
         if (!player.fly) player.pos.y += 0.01;
+        setFlyingClass();
       }
     });
     document.addEventListener('keyup', function (e) { keys[e.code] = false; });
     window.addEventListener('blur', function () { for (var k in keys) keys[k] = false; });
 
     window.addEventListener('resize', function () {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
+      fitCamera();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      fitChatBar();
+    });
+
+    /* =========================================================
+       触屏控制（摇杆 + 滑动转视角 + 动作按钮）
+       ========================================================= */
+    var joyEl = $('#joy'), joyKnob = joyEl.querySelector('i');
+    var joyId = null, joyMax = 42;
+    var mineTimer = null, placeTimer = null;
+
+    function joySet(dx, dy) {
+      var len = Math.hypot(dx, dy);
+      if (len > joyMax) { dx = dx / len * joyMax; dy = dy / len * joyMax; }
+      joyKnob.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
+      var nx = dx / joyMax, ny = dy / joyMax, dead = 0.22;
+      keys['KeyW'] = ny < -dead;
+      keys['KeyS'] = ny > dead;
+      keys['KeyA'] = nx < -dead;
+      keys['KeyD'] = nx > dead;
+      touchSprint = Math.hypot(nx, ny) > 0.9;
+    }
+
+    function joyRelease() {
+      joyId = null;
+      joyKnob.style.transform = 'translate(0px,0px)';
+      keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+      touchSprint = false;
+    }
+
+    function setFlyingClass() {
+      document.body.classList.toggle('flying', !!player.fly);
+      var b = $('#btnFly');
+      b.classList.toggle('on', !!player.fly);
+      b.textContent = player.fly ? '走' : '飞';
+    }
+
+    function bindHold(el, onDown, onUp) {
+      if (!el) return;
+      el.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        el.classList.add('press');
+        try { el.setPointerCapture(e.pointerId); } catch (err) {}
+        onDown();
+      });
+      var end = function () {
+        el.classList.remove('press');
+        if (onUp) onUp();
+      };
+      el.addEventListener('pointerup', end);
+      el.addEventListener('pointercancel', end);
+      el.addEventListener('lostpointercapture', end);
+      el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    }
+
+    if (IS_TOUCH) {
+      // —— 摇杆 ——
+      joyEl.addEventListener('pointerdown', function (e) {
+        if (joyId !== null) return;
+        e.preventDefault();
+        joyId = e.pointerId;
+        try { joyEl.setPointerCapture(e.pointerId); } catch (err) {}
+        var r = joyEl.getBoundingClientRect();
+        joyEl._cx = r.left + r.width / 2;
+        joyEl._cy = r.top + r.height / 2;
+        joyMax = Math.max(22, r.width / 2 - 14);
+        joySet(e.clientX - joyEl._cx, e.clientY - joyEl._cy);
+      });
+      joyEl.addEventListener('pointermove', function (e) {
+        if (e.pointerId !== joyId) return;
+        e.preventDefault();
+        joySet(e.clientX - joyEl._cx, e.clientY - joyEl._cy);
+      });
+      joyEl.addEventListener('pointerup', function (e) { if (e.pointerId === joyId) joyRelease(); });
+      joyEl.addEventListener('pointercancel', function (e) { if (e.pointerId === joyId) joyRelease(); });
+      joyEl.addEventListener('lostpointercapture', function () { if (joyId !== null) joyRelease(); });
+
+      // —— 滑动转视角（画布上单指拖动） ——
+      var lookId = null, lx = 0, ly = 0;
+      var cv = renderer.domElement;
+
+      cv.addEventListener('pointerdown', function (e) {
+        if (e.pointerType === 'mouse') return;
+        if (!started || paused || lookId !== null) return;
+        e.preventDefault();
+        lookId = e.pointerId;
+        lx = e.clientX; ly = e.clientY;
+        try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+      });
+      cv.addEventListener('pointermove', function (e) {
+        if (e.pointerId !== lookId) return;
+        e.preventDefault();
+        look(e.clientX - lx, e.clientY - ly, 0.0042);
+        lx = e.clientX; ly = e.clientY;
+      });
+      var endLook = function (e) { if (e.pointerId === lookId) lookId = null; };
+      cv.addEventListener('pointerup', endLook);
+      cv.addEventListener('pointercancel', endLook);
+
+      // —— 动作按钮 ——
+      bindHold($('#btnMine'), function () {
+        if (!started || paused) return;
+        breakBlock();
+        clearInterval(mineTimer);
+        mineTimer = setInterval(function () {
+          if (!started || paused) { clearInterval(mineTimer); return; }
+          breakBlock();
+        }, 260);
+      }, function () { clearInterval(mineTimer); mineTimer = null; });
+
+      bindHold($('#btnPlace'), function () {
+        if (!started || paused) return;
+        placeBlock();
+        clearInterval(placeTimer);
+        placeTimer = setInterval(function () {
+          if (!started || paused) { clearInterval(placeTimer); return; }
+          placeBlock();
+        }, 280);
+      }, function () { clearInterval(placeTimer); placeTimer = null; });
+
+      bindHold($('#btnJump'), function () { keys['Space'] = true; },
+        function () { keys['Space'] = false; });
+
+      bindHold($('#btnDown'), function () { keys['ShiftLeft'] = true; },
+        function () { keys['ShiftLeft'] = false; });
+
+      $('#btnFly').addEventListener('click', function (e) {
+        e.preventDefault();
+        player.fly = !player.fly;
+        player.vel.y = 0;
+        if (!player.fly) player.pos.y += 0.01;
+        setFlyingClass();
+      });
+
+      // —— 顶部按钮 ——
+      $('#btnChat').addEventListener('click', function (e) { e.preventDefault(); openChat(); });
+      $('#btnPause').addEventListener('click', function (e) { e.preventDefault(); pause(); });
+
+      setFlyingClass();
+    }
+
+    // 快捷栏点选（触屏与鼠标通用）
+    $('#hotbar').addEventListener('click', function (e) {
+      var t = e.target;
+      if (!t || !t.classList || !t.classList.contains('slot')) return;
+      var slots = this.querySelectorAll('.slot');
+      for (var i = 0; i < slots.length; i++) if (slots[i] === t) { selectSlot(i); break; }
     });
 
     /* ---------------- 每帧更新 ---------------- */
     function update(dt) {
       var fly = player.fly;
-      var speed = fly ? 14 : (keys['ShiftLeft'] || keys['ShiftRight'] ? 8 : 4.8);
+      var speed = fly ? 14 : ((keys['ShiftLeft'] || keys['ShiftRight'] || touchSprint) ? 8 : 4.8);
 
       var fx = -Math.sin(yaw), fz = -Math.cos(yaw);
       var rx = Math.cos(yaw), rz = -Math.sin(yaw);
@@ -1236,6 +1571,46 @@
     }
 
     requestAnimationFrame(buildStep);
+
+    // 调试钩子（仅 ?dbg）：用于自动化验证触屏手势，正常游戏不受影响
+    if (location.search.indexOf('dbg') >= 0) {
+      window.__mc = {
+        state: function () {
+          return {
+            x: player.pos.x, y: player.pos.y, z: player.pos.z,
+            yaw: yaw, pitch: pitch, fly: player.fly, sel: selected, chat: chatOpen,
+            keys: Object.keys(keys).filter(function (k) { return keys[k]; }),
+            hit: raycastVoxel(6), players: net.players.size
+          };
+        },
+        blockAt: function (x, y, z) { return getBlock(x, y, z); },
+        slotCount: function () { return document.querySelectorAll('.slot').length; },
+        chatLogCount: function () { return $('#chatLog').children.length; }
+      };
+    }
+
+    if (location.search.indexOf('rects') >= 0) {
+      setTimeout(function () {
+        var ids = ['hotbar', 'joy', 'acts', 'btnFly', 'btnMine', 'chatLog', 'selName', 'topBtns'];
+        var out = ['vw=' + window.innerWidth + 'x' + window.innerHeight];
+        var px = Math.floor(player.pos.x), py = Math.floor(player.pos.y), pz = Math.floor(player.pos.z);
+        var ab = [];
+        for (var d = 1; d <= 6; d++) ab.push(getBlock(px, py + d, pz));
+        out.push('pos=' + player.pos.x.toFixed(1) + ',' + player.pos.y.toFixed(1) + ',' + player.pos.z.toFixed(1));
+        out.push('above=' + ab.join('/'));
+        var h = raycastVoxel(6);
+        out.push('hit=' + (h ? h.x + ',' + h.y + ',' + h.z : 'none'));
+        out.push('id=' + net.id);
+        for (var i = 0; i < ids.length; i++) {
+          var el = document.getElementById(ids[i]);
+          if (!el) { out.push(ids[i] + '=null'); continue; }
+          var r = el.getBoundingClientRect();
+          out.push(ids[i] + '=' + Math.round(r.left) + ',' + Math.round(r.top) + ',' + Math.round(r.width) + 'x' + Math.round(r.height));
+        }
+        document.title = 'RECTS ' + out.join(' | ');
+      }, 1200);
+    }
+
   }
 
   boot();
